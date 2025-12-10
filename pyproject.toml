@@ -11,6 +11,7 @@ aw-client = "^0.5.15"
 schedule = "^1.2.2"
 requests = "^2.32.5"
 python-dotenv = "^1.2.1"
+pillow = "^12.0.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

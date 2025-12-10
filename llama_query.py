@@ -3,7 +3,20 @@ import requests
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "llama3.1:8b"
 
-SYSTEM_PROMPT = """In each query, you are given a list of the user's activities within the last time interval as measured by Activity Watch. Your job is to evaluate these activities and whether or not the user is being productive. Rate their productivity level on a scale of 1 to 10 and explain why you gave the user their particular rating.
+SYSTEM_PROMPT = """In each query, you are given a list of the user's activities within the last time interval as measured by Activity Watch. Your job is to evaluate these activities and whether or not the user is being productive. Rate their productivity level on a scale of 1 to 10 and explain why you gave the user their particular rating. 
+
+For the list of activities, here are some applications and titles that should always be considered PRODUCTIVE
+
+app=Code.exe
+title includes Visual Studio Code
+title includes any variation of the phrase "waifu cop"
+
+For the list of activities, here are some applications and titles that should always be considered UNPRODUCTIVE
+
+title includes Home / X
+title includes YouTube
+
+For all other activities use your best judgement.
 
 you evaluate the user's last activitywatch interval and determine how productive they were.
 you MUST output in EXACTLY this format, no variations:

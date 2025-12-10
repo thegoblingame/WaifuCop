@@ -2,7 +2,15 @@ import sys
 from datetime import datetime, timedelta
 from aw_client import ActivityWatchClient
 from llama_query import query_local_llm
+# this is for discord webhook
 from discord_notifier import send_discord_message
+# This is for standard modal pop-up window. 
+from waifu_popup import show_waifu_popup
+
+try:
+    minutes = int(sys.argv[1])
+except (IndexError, ValueError):
+    minutes = 60
 
 def find_window_bucket_id(client: ActivityWatchClient) -> str:
     """
@@ -63,6 +71,9 @@ def summarize_events(events):
         )
         minutes = seconds / 60.0
 
+        if minutes <= 0.3:
+            continue
+
         key = (app, title)
         buckets[key] = buckets.get(key, 0.0) + minutes
 
@@ -73,26 +84,20 @@ def summarize_events(events):
     return "\n".join(lines)
 
 
-def main():
-    # default to last 15 minutes if no arg given
-    minutes = 15
-    if len(sys.argv) > 1:
-        try:
-            minutes = int(sys.argv[1])
-        except ValueError:
-            print("usage: poetry run python aw_probe.py [minutes]")
-            sys.exit(1)
+def main(minutes: int):
 
     events = get_events_last_minutes(minutes)
     summary = summarize_events(events)
 
+    print(summary)
     # print(f"activity summary for last {minutes} minutes:\n")
     nag = query_local_llm(summary)
-    # print(summary)
     print(nag)
-
-    send_discord_message(nag)
+    # this is for discord webhook
+    # send_discord_message(nag)
+    # This is for standard modal pop-up window.
+    show_waifu_popup("dmg_waifu.png",nag)
 
 
 if __name__ == "__main__":
-    main()
+    main(minutes)

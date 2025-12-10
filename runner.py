@@ -3,9 +3,14 @@ import time
 import sys
 from aw_probe import main as probe_main
 
+try:
+    minutes = int(sys.argv[1])
+except (IndexError, ValueError):
+    minutes = 60
+
 def job():
     print("running aw_probe...")
-    probe_main()
+    probe_main(minutes)
     print("done.\n")
 
 def run_every(minutes: int):
@@ -17,9 +22,5 @@ def run_every(minutes: int):
         time.sleep(1)
 
 if __name__ == "__main__":
-    try:
-        minutes = int(sys.argv[1])
-    except (IndexError, ValueError):
-        minutes = 60
 
     run_every(minutes)
