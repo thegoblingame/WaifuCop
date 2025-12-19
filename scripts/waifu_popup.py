@@ -69,14 +69,35 @@ def show_waifu_popup(
     )
     title_label.pack(side="left", padx=10)
 
+    # ids for tk.after so we can cancel them
+    typing_job_id = None
+    close_job_id = None
+
     def close():
+        nonlocal typing_job_id, close_job_id
+        # cancel scheduled callbacks if they exist
+        try:
+            if typing_job_id is not None:
+                root.after_cancel(typing_job_id)
+        except Exception:
+            pass
+        try:
+            if close_job_id is not None:
+                root.after_cancel(close_job_id)
+        except Exception:
+            pass
         root.destroy()
 
+    # Track whether close button hover effects are enabled
+    close_btn_enabled = {"value": False}
+
     def on_enter(_):
-        close_btn.config(bg="#c42b1c")  # windows-style red
+        if close_btn_enabled["value"]:
+            close_btn.config(bg="#c42b1c")  # windows-style red
 
     def on_leave(_):
-        close_btn.config(bg=header_color)
+        if close_btn_enabled["value"]:
+            close_btn.config(bg=header_color)
 
     close_btn = tk.Button(
         header,
@@ -90,11 +111,20 @@ def show_waifu_popup(
         font=("Allerta", 16, "bold"),
         activebackground="#c42b1c",
         activeforeground="white",
+        state="disabled",  # Start disabled
     )
 
     close_btn.bind("<Enter>", on_enter)
     close_btn.bind("<Leave>", on_leave)
     close_btn.pack(side="right")
+
+    # Enable close button after 3 seconds
+    def enable_close_btn():
+        if root.winfo_exists():
+            close_btn_enabled["value"] = True
+            close_btn.config(state="normal")
+
+    root.after(3000, enable_close_btn)
 
     # ===================== BODY ================================
     frame = tk.Frame(root, bg=bg_color)
@@ -129,9 +159,13 @@ def show_waifu_popup(
     typing_delay_ms = 20  # smaller = faster typing
 
     def type_writer(index: int = 0):
+        nonlocal typing_job_id
+        # if the window is gone, don't schedule anything
+        if not root.winfo_exists():
+            return
         if index <= len(message):
             text_label.config(text=message[:index])
-            root.after(typing_delay_ms, type_writer, index + 1)
+            typing_job_id = root.after(typing_delay_ms, type_writer, index + 1)
 
     type_writer()
 
@@ -139,10 +173,9 @@ def show_waifu_popup(
     if duration_ms > 0:
         total_typing_time = typing_delay_ms * len(message)
         close_after = max(duration_ms, total_typing_time + 1000)
-        root.after(close_after, close)
+        close_job_id = root.after(close_after, close)
 
     root.mainloop()
-
 
 if __name__ == "__main__":
     show_waifu_popup(sys.argv[1], sys.argv[2])

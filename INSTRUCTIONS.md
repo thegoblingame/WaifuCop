@@ -1,0 +1,1 @@
+I'm adding you to a project. Claude Code. What I would first like you to do is get some context for what's going on. So I need you to do the following: Go through every single file in the scripts subfolder and give me a written explanation of the project itself and what each file is doing.
