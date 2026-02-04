@@ -3,10 +3,13 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 
+with open("C:\\Users\\khaaa\\Desktop\\WaifuCop\\debug.txt","a") as f:
+    f.write(str(sys.argv) + "\n")
 
 def show_waifu_popup(
     img_path: str,
     message: str,
+    waifu_meter: int | None = 50,
     title: str = "waifucop",
     width: int | None = 750,
     height: int | None = 450,
@@ -20,18 +23,6 @@ def show_waifu_popup(
     bg_color = "#333333"
     header_color = "#0078d4"
     root.configure(bg=bg_color)
-
-    # ------------------------------------------------------------
-    # drag handling
-    drag = {"x": 0, "y": 0}
-
-    def start_move(event):
-        drag["x"] = event.x
-        drag["y"] = event.y
-
-    def do_move(event):
-        root.geometry(f"+{event.x_root - drag['x']}+{event.y_root - drag['y']}")
-    # ------------------------------------------------------------
 
     # load + scale image
     img = Image.open(img_path)
@@ -56,9 +47,6 @@ def show_waifu_popup(
     # ===================== HEADER BAR ===========================
     header = tk.Frame(root, bg=header_color, height=30)
     header.pack(fill="x")
-
-    header.bind("<ButtonPress-1>", start_move)
-    header.bind("<B1-Motion>", do_move)
 
     title_label = tk.Label(
         header,
@@ -130,17 +118,9 @@ def show_waifu_popup(
     frame = tk.Frame(root, bg=bg_color)
     frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-    frame.bind("<ButtonPress-1>", start_move)
-    frame.bind("<B1-Motion>", do_move)
-    root.bind("<ButtonPress-1>", start_move)
-    root.bind("<B1-Motion>", do_move)
-
     img_label = tk.Label(frame, image=tk_img, bg=bg_color)
     img_label.image = tk_img
     img_label.pack(side="left", padx=(0, 10))
-
-    img_label.bind("<ButtonPress-1>", start_move)
-    img_label.bind("<B1-Motion>", do_move)
 
     # start with empty text, we’ll type it in
     text_label = tk.Label(
@@ -154,6 +134,18 @@ def show_waifu_popup(
         font=("Allerta", 16),
     )
     text_label.pack(side="right", fill="both", expand=True)
+
+    # ===================== SCORE DISPLAY =======================
+    if waifu_meter is not None:
+        score_label = tk.Label(
+            root,
+            text=str(waifu_meter),
+            bg=bg_color,
+            fg="#888888",
+            font=("Allerta", 12),
+            anchor="se",
+        )
+        score_label.place(relx=1.0, rely=1.0, x=-10, y=-10, anchor="se")
 
     # ===================== TYPEWRITER EFFECT ===================
     typing_delay_ms = 20  # smaller = faster typing
@@ -178,4 +170,4 @@ def show_waifu_popup(
     root.mainloop()
 
 if __name__ == "__main__":
-    show_waifu_popup(sys.argv[1], sys.argv[2])
+    show_waifu_popup(sys.argv[1], sys.argv[2], sys.argv[3])

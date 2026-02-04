@@ -1,3 +1,5 @@
+# Claude, please note that this file is not currently being used. 
+
 import os
 import requests
 from dotenv import load_dotenv
