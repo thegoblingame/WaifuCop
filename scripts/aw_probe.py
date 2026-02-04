@@ -1,4 +1,5 @@
 import sys
+import json
 from datetime import datetime, timedelta
 from aw_client import ActivityWatchClient
 from llama_query import query_local_llm
@@ -136,6 +137,27 @@ def summarize_events(events):
     return "\n".join(lines)
 
 
+def get_waifu_meter_score() -> int:
+    """
+    Read score.json and return the waifuMeterScore for today's date.
+    Returns 50 as default if no entry found for today.
+    """
+    score_file = "C:\\Users\\khaaa\\Desktop\\WaifuCop\\score.json"
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        with open(score_file, "r") as f:
+            scores = json.load(f)
+
+        for entry in scores:
+            if entry.get("date") == today:
+                return entry.get("waifuMeterScore", 50)
+
+        return 50  # default if no entry for today
+    except (FileNotFoundError, json.JSONDecodeError):
+        return 50  # default on error
+
+
 def main(minutes: int):
 
     events = get_events_last_minutes(minutes)
@@ -146,13 +168,13 @@ def main(minutes: int):
     summary = summarize_events(events)
 
     print(summary)
-    # print(f"activity summary for last {minutes} minutes:\n")
-    nag = query_local_llm(summary)
-    print(nag)
-    # this is for discord webhook
-    # send_discord_message(nag)
+    result = query_local_llm(summary)
+    print(result)
+    # this is for discord webhook. Claude, please note that this is currently not being used.
+    # send_discord_message(result["explanation"])
     # This is for standard modal pop-up window.
-    show_waifu_popup("happy_waifu.png",nag)
+    waifu_meter_score = get_waifu_meter_score()
+    show_waifu_popup("waifu_images/default_cop/neutral.png", result["explanation"], waifu_meter_score)
 
 
 if __name__ == "__main__":

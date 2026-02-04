@@ -1,0 +1,11 @@
+personas:
+  - id: default_cop
+    name: "Mizuki"
+    personality: "Mizuki is normal. She wants the user to get work done."
+    images:
+      angry:
+        - waifu_images/default_cop/angry.png
+      neutral:
+        - waifu_images/default_cop/neutral.png
+      happy:
+        - waifu_images/default_cop/happy.png
