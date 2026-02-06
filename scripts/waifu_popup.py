@@ -1,9 +1,13 @@
 import sys
 import tkinter as tk
 from tkinter import ttk
+from pathlib import Path
 from PIL import Image, ImageTk
 
-with open("C:\\Users\\khaaa\\Desktop\\WaifuCop\\debug.txt","a") as f:
+# Get the project root (parent of scripts/)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+with open(PROJECT_ROOT / "debug.txt", "a") as f:
     f.write(str(sys.argv) + "\n")
 
 def show_waifu_popup(
@@ -11,8 +15,8 @@ def show_waifu_popup(
     message: str,
     waifu_meter: int | None = 50,
     title: str = "waifucop",
-    width: int | None = 750,
-    height: int | None = 450,
+    width_pct: float = 0.40,   # percentage of screen width (0.0 to 1.0)
+    height_pct: float = 0.45,  # percentage of screen height (0.0 to 1.0)
     duration_ms: int = 30000,
 ) -> None:
 
@@ -24,22 +28,21 @@ def show_waifu_popup(
     header_color = "#0078d4"
     root.configure(bg=bg_color)
 
+    # Get screen dimensions first to calculate percentage-based sizes
+    screen_w = root.winfo_screenwidth()
+    screen_h = root.winfo_screenheight()
+    width = int(screen_w * width_pct)
+    height = int(screen_h * height_pct)
+
     # load + scale image
     img = Image.open(img_path)
-    if height:
-        target_h = height - 70
-        scale = target_h / img.height
-        img = img.resize((int(img.width * scale), target_h), Image.LANCZOS)
+    target_h = height - 70
+    scale = target_h / img.height
+    img = img.resize((int(img.width * scale), target_h), Image.LANCZOS)
     tk_img = ImageTk.PhotoImage(img)
 
     img_w, img_h = img.size
-    if width is None:
-        width = img_w + 260
-    if height is None:
-        height = max(img_h + 60, 220)
 
-    screen_w = root.winfo_screenwidth()
-    screen_h = root.winfo_screenheight()
     root.geometry(
         f"{width}x{height}+{(screen_w - width)//2}+{(screen_h - height)//3}"
     )
@@ -87,30 +90,32 @@ def show_waifu_popup(
         if close_btn_enabled["value"]:
             close_btn.config(bg=header_color)
 
-    close_btn = tk.Button(
+    def on_click(_):
+        if close_btn_enabled["value"]:
+            close()
+
+    # Use Label instead of Button for cross-platform color support
+    close_btn = tk.Label(
         header,
         text="✕",
-        command=close,
         bg=header_color,
-        fg="white",
-        bd=0,
+        fg="#888888",  # Greyed out initially
         padx=10,
         pady=2,
         font=("Allerta", 16, "bold"),
-        activebackground="#c42b1c",
-        activeforeground="white",
-        state="disabled",  # Start disabled
+        cursor="arrow",
     )
 
     close_btn.bind("<Enter>", on_enter)
     close_btn.bind("<Leave>", on_leave)
+    close_btn.bind("<Button-1>", on_click)
     close_btn.pack(side="right")
 
     # Enable close button after 3 seconds
     def enable_close_btn():
         if root.winfo_exists():
             close_btn_enabled["value"] = True
-            close_btn.config(state="normal")
+            close_btn.config(fg="white", cursor="hand2")
 
     root.after(3000, enable_close_btn)
 

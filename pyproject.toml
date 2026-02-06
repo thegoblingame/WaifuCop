@@ -1,19 +1,14 @@
-[tool.poetry]
+[project]
 name = "waifucop"
 version = "0.1.0"
-description = ""
+description = "Add your description here"
 readme = "README.md"
-packages = [{ include = "waifucop", from = "src" }]
-
-[tool.poetry.dependencies]
-python = ">=3.13.1,<4.0"
-aw-client = "^0.5.15"
-schedule = "^1.2.2"
-requests = "^2.32.5"
-python-dotenv = "^1.2.1"
-pillow = "^12.0.0"
-pyyaml = "^6.0.3"
-
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires-python = ">=3.14"
+dependencies = [
+    "aw-client>=0.5.15",
+    "pillow>=12.1.0",
+    "python-dotenv>=1.2.1",
+    "pyyaml>=6.0.3",
+    "requests>=2.32.5",
+    "schedule>=1.2.2",
+]
