@@ -7,6 +7,7 @@ requires-python = ">=3.14"
 dependencies = [
     "aw-client>=0.5.15",
     "pillow>=12.1.0",
+    "pyside6>=6.10.2",
     "python-dotenv>=1.2.1",
     "pyyaml>=6.0.3",
     "requests>=2.32.5",

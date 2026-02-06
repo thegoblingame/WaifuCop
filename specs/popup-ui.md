@@ -19,27 +19,35 @@ The popup UI is the primary visual feedback mechanism for WaifuCop. It displays 
 
 | Property | Value |
 |----------|-------|
-| Framework | tkinter |
-| Window Type | Toplevel (borderless) |
-| Default Size | 750 x 450 pixels |
-| Position | Centered on screen |
-| Always on Top | Yes |
-| Resizable | No |
+| Framework | PySide6 (Qt 6) |
+| Window Type | `QWidget` (frameless via `Qt.FramelessWindowHint`) |
+| Default Size | 40% screen width x 45% screen height (percentage-based) |
+| Position | Centered horizontally, placed at 1/3 from top vertically |
+| Always on Top | Yes (`Qt.WindowStaysOnTopHint`) |
+| Resizable | No (frameless, fixed size) |
 
 ### 2.2 Window Behavior
 
-```python
-# Window configuration
-root.overrideredirect(True)  # Remove window border/title bar
-root.attributes("-topmost", True)  # Always on top
-root.resizable(False, False)  # Fixed size
+Window dimensions are percentage-based for cross-platform consistency across different screen resolutions.
 
-# Center on screen
-screen_width = root.winfo_screenwidth()
-screen_height = root.winfo_screenheight()
-x = (screen_width - 750) // 2
-y = (screen_height - 450) // 2
-root.geometry(f"750x450+{x}+{y}")
+```python
+from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtCore import Qt
+
+app = QApplication.instance() or QApplication(sys.argv)
+
+window = QWidget()
+window.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+
+# Percentage-based sizing
+screen = app.primaryScreen().geometry()
+screen_w, screen_h = screen.width(), screen.height()
+width = int(screen_w * width_pct)   # default 0.40
+height = int(screen_h * height_pct) # default 0.45
+
+# Centered horizontally, 1/3 from top vertically
+window.setFixedSize(width, height)
+window.move((screen_w - width) // 2, (screen_h - height) // 3)
 ```
 
 ---
@@ -54,9 +62,10 @@ root.geometry(f"750x450+{x}+{y}")
 | Header Bar | Windows Blue | `#0078d4` |
 | Header Text | White | `#FFFFFF` |
 | Body Text | White | `#FFFFFF` |
-| Close Button (Normal) | Transparent | - |
-| Close Button (Hover) | Red | `#FF0000` |
-| Close Button (Disabled) | Gray | `#666666` |
+| Close Button (Normal) | Header color | `#0078d4` |
+| Close Button (Hover) | Windows-style Red | `#c42b1c` |
+| Close Button (Disabled) | Gray | `#888888` |
+| Waifu Meter Score | Gray | `#888888` |
 
 ### 3.2 Layout Structure
 
@@ -85,12 +94,14 @@ root.geometry(f"750x450+{x}+{y}")
 
 ### 3.3 Component Dimensions
 
+Dimensions scale with the percentage-based window size. These are approximate for a 1920x1080 screen:
+
 | Component | Width | Height | Position |
 |-----------|-------|--------|----------|
-| Header Bar | 750px | 30px | Top |
-| Waifu Image Area | ~300px | ~400px | Left side |
-| Message Area | ~400px | ~350px | Right side |
-| Waifu Meter Display | ~100px | ~40px | Bottom-right |
+| Header Bar | Full width | 30px | Top, via `QHBoxLayout` |
+| Waifu Image Area | Scales to fit | Window height - 70px | Left side |
+| Message Area | Window width - image width - 60px | Fills remaining | Right side |
+| Waifu Meter Display | Auto | Auto | Absolute bottom-right (via layout alignment) |
 
 ---
 
@@ -120,24 +131,20 @@ def get_image_path(persona_id: str, waifu_meter: int) -> str:
 
 ### 4.2 Image Scaling
 
-Images are scaled to fit the allocated area while maintaining aspect ratio:
+Images are scaled based on target height (window height minus header/padding) while maintaining aspect ratio. Width is not independently constrained — it scales proportionally with height.
 
 ```python
-from PIL import Image, ImageTk
+from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt
 
-def load_and_scale_image(path: str, max_width: int, max_height: int):
-    img = Image.open(path)
+target_h = height - 70  # leave room for header + padding
+pixmap = QPixmap(img_path)
+pixmap = pixmap.scaledToHeight(target_h, Qt.SmoothTransformation)
+```
 
-    # Calculate scale to fit within bounds
-    width_ratio = max_width / img.width
-    height_ratio = max_height / img.height
-    scale = min(width_ratio, height_ratio)
-
-    new_width = int(img.width * scale)
-    new_height = int(img.height * scale)
-
-    img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-    return ImageTk.PhotoImage(img)
+The resulting image width is then used to calculate the text area's word-wrap width dynamically:
+```python
+wrap_width = width - pixmap.width() - 60
 ```
 
 ---
@@ -146,59 +153,83 @@ def load_and_scale_image(path: str, max_width: int, max_height: int):
 
 ### 5.1 Typewriter Effect
 
-The message is displayed character-by-character to create engagement:
+The message is displayed character-by-character to create engagement. A `QTimer` drives the animation and is tracked so it can be stopped on early window close.
 
 ```python
-def typewriter_effect(label: tk.Label, text: str, delay_ms: int = 20):
-    """Display text one character at a time."""
+from PySide6.QtCore import QTimer
 
-    def type_next(index: int):
-        if index <= len(text):
-            label.config(text=text[:index])
-            label.after(delay_ms, lambda: type_next(index + 1))
-        else:
-            # Typing complete - signal that window can now auto-close
-            typing_complete.set(True)
+typing_delay_ms = 20
+typing_index = 0
 
-    type_next(0)
+typing_timer = QTimer()
+typing_timer.setInterval(typing_delay_ms)
+
+def type_writer():
+    nonlocal typing_index
+    if typing_index <= len(message):
+        text_label.setText(message[:typing_index])
+        typing_index += 1
+    else:
+        typing_timer.stop()
+
+typing_timer.timeout.connect(type_writer)
+typing_timer.start()
 ```
 
 ### 5.2 Text Styling
 
 | Property | Value |
 |----------|-------|
-| Font Family | System default (or configurable) |
-| Font Size | 12-14pt |
+| Font Family | Allerta |
+| Font Size | 16pt (body), 16pt bold (header/close button), 12pt (score) |
 | Color | White (`#FFFFFF`) |
-| Wrapping | Word wrap at container width |
-| Alignment | Left-aligned |
+| Wrapping | Word wrap, dynamic `wraplength` based on remaining width |
+| Alignment | Left-aligned (`justify="left"`, `anchor="nw"`) |
 
 ---
 
 ## 6. Close Button Behavior
 
-### 6.1 Delayed Enable
+### 6.1 Implementation
 
-The close button is disabled for the first 3 seconds to ensure the user sees the message:
+The close button is implemented as a `QLabel` with mouse event handling. It uses the "✕" character and event filter or subclass for hover/click behavior.
+
+A boolean flag gates all interactions — hover, leave, and click handlers check this flag before acting.
+
+### 6.2 Delayed Enable
+
+The close button is disabled for the first 3 seconds to ensure the user sees the message. On enable, the text color changes from gray to white and the cursor changes to a hand pointer.
 
 ```python
-def setup_close_button(button: tk.Button, root: tk.Tk):
-    button.config(state="disabled", fg="#666666")
+from PySide6.QtCore import QTimer, Qt
 
-    def enable_close():
-        button.config(state="normal", fg="#FFFFFF")
-        # Add hover effect
-        button.bind("<Enter>", lambda e: button.config(bg="#FF0000"))
-        button.bind("<Leave>", lambda e: button.config(bg="#0078d4"))
+# Initially disabled
+close_btn = QLabel("✕")
+close_btn.setStyleSheet("color: #888888;")
+close_btn.setCursor(Qt.ArrowCursor)
+close_btn_enabled = False
 
-    root.after(3000, enable_close)  # Enable after 3 seconds
+def enable_close_btn():
+    nonlocal close_btn_enabled
+    close_btn_enabled = True
+    close_btn.setStyleSheet("color: white;")
+    close_btn.setCursor(Qt.PointingHandCursor)
+
+QTimer.singleShot(3000, enable_close_btn)
 ```
 
-### 6.2 Hover Effect
+### 6.3 Hover Effect
 
 When enabled, the close button shows visual feedback on hover:
-- Normal: Transparent/header color
-- Hover: Red background (`#FF0000`)
+- Normal: Header color (`#0078d4`)
+- Hover: Windows-style red (`#c42b1c`)
+
+### 6.4 Cursor Feedback
+
+| State | Cursor |
+|-------|--------|
+| Disabled (first 3s) | `Qt.ArrowCursor` (default) |
+| Enabled | `Qt.PointingHandCursor` (pointer) |
 
 ---
 
@@ -206,35 +237,39 @@ When enabled, the close button shows visual feedback on hover:
 
 ### 7.1 Auto-Close Logic
 
-The window closes automatically when BOTH conditions are met:
-1. Minimum display time has elapsed (30 seconds)
-2. Typewriter effect has completed
+The window auto-closes after the **greater** of:
+1. The `duration_ms` parameter (default 30 seconds)
+2. The total typewriter typing time + 1 second buffer
+
+This is calculated upfront as a single `QTimer.singleShot` call, not a polling loop:
 
 ```python
-def setup_auto_close(root: tk.Tk, duration_ms: int = 30000):
-    typing_complete = tk.BooleanVar(value=False)
-    timer_complete = tk.BooleanVar(value=False)
-
-    def check_close():
-        if typing_complete.get() and timer_complete.get():
-            root.destroy()
-        else:
-            root.after(100, check_close)
-
-    def timer_done():
-        timer_complete.set(True)
-
-    root.after(duration_ms, timer_done)
-    root.after(100, check_close)
-
-    return typing_complete  # Return so typewriter can signal completion
+if duration_ms > 0:
+    total_typing_time = typing_delay_ms * len(message)
+    close_after = max(duration_ms, total_typing_time + 1000)
+    QTimer.singleShot(close_after, close)
 ```
+
+Auto-close is only set up if `duration_ms > 0`, allowing callers to disable it by passing `0`.
 
 ### 7.2 Manual Close
 
-User can close the window after the 3-second delay by:
-- Clicking the close button
+User can close the window after the 3-second delay by clicking the close button.
 - (Future: Pressing Escape key)
+
+### 7.3 Cleanup on Close
+
+The `close()` function stops any running timers before closing the window to prevent errors from orphaned callbacks:
+
+```python
+def close():
+    typing_timer.stop()
+    window.close()
+```
+
+### 7.4 Window Existence Guards
+
+Both the typewriter effect and the close button enable timer check `window.isVisible()` before acting, preventing errors if the window has already been closed.
 
 ---
 
@@ -242,16 +277,13 @@ User can close the window after the 3-second delay by:
 
 ### 8.1 Visual Representation
 
-The current waifu meter is displayed in the bottom-right corner:
+The waifu meter score is displayed as a plain number in the bottom-right corner using layout alignment. No label or border — just the number in gray (`#888888`).
 
-```
-┌──────────────────┐
-│   Waifu Meter    │
-│       67         │
-└──────────────────┘
-```
+### 8.2 Optional Display
 
-### 8.2 Color Coding (Optional Enhancement)
+The waifu meter display is conditional. If `waifu_meter` is `None`, the score is not shown at all. This allows callers to hide the meter when a score is not available.
+
+### 8.3 Color Coding (Future Enhancement)
 
 | Meter Range | Color |
 |-------------|-------|
@@ -266,11 +298,14 @@ The current waifu meter is displayed in the bottom-right corner:
 ### 9.1 Function Signature
 
 ```python
-def show_popup(
+def show_waifu_popup(
     img_path: str,
     message: str,
-    waifu_meter: int = 50,
-    duration_ms: int = 30000
+    waifu_meter: int | None = 50,
+    title: str = "waifucop",
+    width_pct: float = 0.40,
+    height_pct: float = 0.45,
+    duration_ms: int = 30000,
 ) -> None:
     """
     Display the waifu popup window.
@@ -278,8 +313,11 @@ def show_popup(
     Args:
         img_path: Path to the waifu image file
         message: LLM-generated message to display
-        waifu_meter: Current meter score (0-100)
-        duration_ms: Minimum display time before auto-close
+        waifu_meter: Current meter score (0-100), or None to hide the score
+        title: Header bar title text
+        width_pct: Window width as a fraction of screen width (0.0–1.0)
+        height_pct: Window height as a fraction of screen height (0.0–1.0)
+        duration_ms: Minimum display time before auto-close (0 to disable)
     """
 ```
 
@@ -288,8 +326,14 @@ def show_popup(
 For testing and external invocation:
 
 ```bash
-python waifu_popup.py <image_path> <message> [waifu_meter] [duration_ms]
+python scripts/waifu_popup.py <image_path> <message> <waifu_meter>
 ```
+
+Note: The script lives in `scripts/` and resolves `PROJECT_ROOT` as its parent directory.
+
+### 9.3 Debug Logging
+
+On startup, the script appends `sys.argv` to `PROJECT_ROOT/debug.txt` for troubleshooting invocation issues.
 
 ---
 
@@ -303,17 +347,19 @@ If the specified image file doesn't exist:
 - Do not crash
 
 ```python
-def safe_load_image(path: str, fallback_path: str):
-    try:
-        return load_and_scale_image(path, MAX_WIDTH, MAX_HEIGHT)
-    except FileNotFoundError:
-        print(f"Warning: Image not found: {path}")
-        return load_and_scale_image(fallback_path, MAX_WIDTH, MAX_HEIGHT)
+from PySide6.QtGui import QPixmap
+
+def safe_load_image(path: str, fallback_path: str) -> QPixmap:
+    pixmap = QPixmap(path)
+    if pixmap.isNull():
+        print(f"Warning: Image not found or failed to load: {path}")
+        pixmap = QPixmap(fallback_path)
+    return pixmap
 ```
 
 ### 10.2 Display Errors
 
-If tkinter fails to create the window:
+If PySide6 fails to create the window:
 - Log error with details
 - Fail gracefully (scheduler continues)
 
@@ -336,17 +382,22 @@ If tkinter fails to create the window:
 
 ## 12. Implementation Checklist
 
-- [ ] Window creation with borderless/topmost settings
-- [ ] Header bar with title and close button
-- [ ] Image loading and scaling
-- [ ] Image selection based on waifu meter
-- [ ] Typewriter effect for message
-- [ ] 3-second close button delay
-- [ ] Hover effect on close button
-- [ ] Auto-close after 30 seconds + typing complete
-- [ ] Waifu meter display
-- [ ] Command-line interface for testing
-- [ ] Error handling for missing images
+- [x] Window creation with borderless/topmost settings
+- [x] Percentage-based window sizing
+- [x] Header bar with title and close button (Label-based, cross-platform)
+- [x] Image loading and height-based scaling
+- [ ] Image selection based on waifu meter (mood-based path resolution)
+- [x] Typewriter effect for message
+- [x] 3-second close button delay with cursor feedback
+- [x] Hover effect on close button
+- [x] Auto-close after max(duration, typing time + 1s)
+- [x] Callback cancellation on close
+- [x] `isVisible()` guards
+- [x] Optional waifu meter display
+- [x] Command-line interface for testing
+- [x] Debug logging (`debug.txt`)
+- [ ] Error handling for missing images (fallback image)
+- [ ] Keyboard close (Escape key)
 
 ---
 

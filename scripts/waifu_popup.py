@@ -1,178 +1,232 @@
 import sys
-import tkinter as tk
-from tkinter import ttk
 from pathlib import Path
-from PIL import Image, ImageTk
 
-# Get the project root (parent of scripts/)
+from PySide6.QtWidgets import (
+	QApplication,
+	QHBoxLayout,
+	QLabel,
+	QVBoxLayout,
+	QWidget,
+)
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFontDatabase, QFont, QPixmap
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 with open(PROJECT_ROOT / "debug.txt", "a") as f:
-    f.write(str(sys.argv) + "\n")
+	f.write(str(sys.argv) + "\n")
+
+
+def _load_font() -> str:
+	"""Load Allerta font and return the family name."""
+	font_path = str(PROJECT_ROOT / "fonts" / "Allerta-Regular.ttf")
+	font_id = QFontDatabase.addApplicationFont(font_path)
+	if font_id >= 0:
+		families = QFontDatabase.applicationFontFamilies(font_id)
+		if families:
+			return families[0]
+	return "Allerta"
+
+
+class CloseButton(QLabel):
+	"""Close button label with hover/click behavior and delayed enable."""
+
+	def __init__(self, close_callback):
+		super().__init__("✕")
+		self._close_callback = close_callback
+		self._enabled = False
+		self._header_color = "#0078d4"
+		self._hover_color = "#c42b1c"
+
+		self.setAlignment(Qt.AlignCenter)
+		self.setFixedSize(30, 30)
+		self.setCursor(Qt.ArrowCursor)
+		self._apply_style(self._header_color, "#888888")
+
+	def enable(self):
+		self._enabled = True
+		self.setCursor(Qt.PointingHandCursor)
+		self._apply_style(self._header_color, "white")
+
+	def _apply_style(self, bg: str, fg: str):
+		self.setStyleSheet(f"background-color: {bg}; color: {fg};")
+
+	def enterEvent(self, event):
+		if self._enabled:
+			self._apply_style(self._hover_color, "white")
+		super().enterEvent(event)
+
+	def leaveEvent(self, event):
+		if self._enabled:
+			self._apply_style(self._header_color, "white")
+		super().leaveEvent(event)
+
+	def mousePressEvent(self, event):
+		if self._enabled and event.button() == Qt.LeftButton:
+			self._close_callback()
+		super().mousePressEvent(event)
+
 
 def show_waifu_popup(
-    img_path: str,
-    message: str,
-    waifu_meter: int | None = 50,
-    title: str = "waifucop",
-    width_pct: float = 0.40,   # percentage of screen width (0.0 to 1.0)
-    height_pct: float = 0.45,  # percentage of screen height (0.0 to 1.0)
-    duration_ms: int = 30000,
+	img_path: str,
+	message: str,
+	waifu_meter: int | None = 50,
+	title: str = "waifucop",
+	width_pct: float = 0.40,
+	height_pct: float = 0.45,
+	duration_ms: int = 30000,
 ) -> None:
+	"""
+	Display the waifu popup window.
 
-    root = tk.Tk()
-    root.overrideredirect(True)
-    root.attributes("-topmost", True)
+	Args:
+		img_path: Path to the waifu image file
+		message: LLM-generated message to display
+		waifu_meter: Current meter score (0-100), or None to hide the score
+		title: Header bar title text
+		width_pct: Window width as a fraction of screen width (0.0-1.0)
+		height_pct: Window height as a fraction of screen height (0.0-1.0)
+		duration_ms: Minimum display time before auto-close (0 to disable)
+	"""
+	app = QApplication.instance() or QApplication(sys.argv)
 
-    bg_color = "#333333"
-    header_color = "#0078d4"
-    root.configure(bg=bg_color)
+	font_family = _load_font()
+	body_font = QFont(font_family, 16)
+	header_font = QFont(font_family, 16)
+	header_font.setBold(True)
+	score_font = QFont(font_family, 12)
 
-    # Get screen dimensions first to calculate percentage-based sizes
-    screen_w = root.winfo_screenwidth()
-    screen_h = root.winfo_screenheight()
-    width = int(screen_w * width_pct)
-    height = int(screen_h * height_pct)
+	bg_color = "#333333"
+	header_color = "#0078d4"
 
-    # load + scale image
-    img = Image.open(img_path)
-    target_h = height - 70
-    scale = target_h / img.height
-    img = img.resize((int(img.width * scale), target_h), Image.LANCZOS)
-    tk_img = ImageTk.PhotoImage(img)
+	# ===================== WINDOW SETUP ===========================
+	screen = app.primaryScreen().geometry()
+	screen_w, screen_h = screen.width(), screen.height()
+	width = int(screen_w * width_pct)
+	height = int(screen_h * height_pct)
 
-    img_w, img_h = img.size
+	window = QWidget()
+	window.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+	window.setFixedSize(width, height)
+	window.move((screen_w - width) // 2, (screen_h - height) // 3)
+	window.setStyleSheet(f"background-color: {bg_color};")
 
-    root.geometry(
-        f"{width}x{height}+{(screen_w - width)//2}+{(screen_h - height)//3}"
-    )
+	main_layout = QVBoxLayout(window)
+	main_layout.setContentsMargins(0, 0, 0, 0)
+	main_layout.setSpacing(0)
 
-    # ===================== HEADER BAR ===========================
-    header = tk.Frame(root, bg=header_color, height=30)
-    header.pack(fill="x")
+	# ===================== TIMERS =================================
+	typing_timer = QTimer()
+	typing_timer.setInterval(20)
 
-    title_label = tk.Label(
-        header,
-        text=title,
-        bg=header_color,
-        fg="#ffffff",
-        font=("Allerta", 16, "bold"),
-    )
-    title_label.pack(side="left", padx=10)
+	def close():
+		typing_timer.stop()
+		window.close()
 
-    # ids for tk.after so we can cancel them
-    typing_job_id = None
-    close_job_id = None
+	# ===================== HEADER BAR =============================
+	header = QWidget()
+	header.setFixedHeight(30)
+	header.setStyleSheet(f"background-color: {header_color};")
 
-    def close():
-        nonlocal typing_job_id, close_job_id
-        # cancel scheduled callbacks if they exist
-        try:
-            if typing_job_id is not None:
-                root.after_cancel(typing_job_id)
-        except Exception:
-            pass
-        try:
-            if close_job_id is not None:
-                root.after_cancel(close_job_id)
-        except Exception:
-            pass
-        root.destroy()
+	header_layout = QHBoxLayout(header)
+	header_layout.setContentsMargins(10, 0, 0, 0)
+	header_layout.setSpacing(0)
 
-    # Track whether close button hover effects are enabled
-    close_btn_enabled = {"value": False}
+	title_label = QLabel(title)
+	title_label.setFont(header_font)
+	title_label.setStyleSheet(f"color: white; background-color: {header_color};")
+	header_layout.addWidget(title_label)
 
-    def on_enter(_):
-        if close_btn_enabled["value"]:
-            close_btn.config(bg="#c42b1c")  # windows-style red
+	header_layout.addStretch()
 
-    def on_leave(_):
-        if close_btn_enabled["value"]:
-            close_btn.config(bg=header_color)
+	close_btn = CloseButton(close)
+	close_btn.setFont(header_font)
+	header_layout.addWidget(close_btn)
 
-    def on_click(_):
-        if close_btn_enabled["value"]:
-            close()
+	QTimer.singleShot(3000, close_btn.enable)
 
-    # Use Label instead of Button for cross-platform color support
-    close_btn = tk.Label(
-        header,
-        text="✕",
-        bg=header_color,
-        fg="#888888",  # Greyed out initially
-        padx=10,
-        pady=2,
-        font=("Allerta", 16, "bold"),
-        cursor="arrow",
-    )
+	main_layout.addWidget(header)
 
-    close_btn.bind("<Enter>", on_enter)
-    close_btn.bind("<Leave>", on_leave)
-    close_btn.bind("<Button-1>", on_click)
-    close_btn.pack(side="right")
+	# ===================== BODY ===================================
+	body = QWidget()
+	body.setStyleSheet(f"background-color: {bg_color};")
+	body_layout = QHBoxLayout(body)
+	body_layout.setContentsMargins(10, 10, 10, 10)
+	body_layout.setSpacing(10)
 
-    # Enable close button after 3 seconds
-    def enable_close_btn():
-        if root.winfo_exists():
-            close_btn_enabled["value"] = True
-            close_btn.config(fg="white", cursor="hand2")
+	# --- Image ---
+	target_h = height - 70
+	pixmap = QPixmap(img_path)
+	if pixmap.isNull():
+		print(f"Warning: Image not found or failed to load: {img_path}")
+	else:
+		pixmap = pixmap.scaledToHeight(target_h, Qt.SmoothTransformation)
 
-    root.after(3000, enable_close_btn)
+	img_label = QLabel()
+	img_label.setPixmap(pixmap)
+	img_label.setAlignment(Qt.AlignTop)
+	img_label.setStyleSheet(f"background-color: {bg_color};")
+	body_layout.addWidget(img_label)
 
-    # ===================== BODY ================================
-    frame = tk.Frame(root, bg=bg_color)
-    frame.pack(fill="both", expand=True, padx=10, pady=10)
+	img_w = pixmap.width() if not pixmap.isNull() else 0
 
-    img_label = tk.Label(frame, image=tk_img, bg=bg_color)
-    img_label.image = tk_img
-    img_label.pack(side="left", padx=(0, 10))
+	# --- Text area (message + meter) ---
+	text_container = QWidget()
+	text_container.setStyleSheet(f"background-color: {bg_color};")
+	text_layout = QVBoxLayout(text_container)
+	text_layout.setContentsMargins(0, 0, 0, 0)
+	text_layout.setSpacing(0)
 
-    # start with empty text, we’ll type it in
-    text_label = tk.Label(
-        frame,
-        text="",
-        bg=bg_color,
-        fg="#ffffff",
-        justify="left",
-        anchor="nw",
-        wraplength=width - img_w - 60,
-        font=("Allerta", 16),
-    )
-    text_label.pack(side="right", fill="both", expand=True)
+	wrap_width = width - img_w - 60
+	text_label = QLabel("")
+	text_label.setFont(body_font)
+	text_label.setStyleSheet(f"color: white; background-color: {bg_color};")
+	text_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+	text_label.setWordWrap(True)
+	text_label.setFixedWidth(max(wrap_width, 100))
+	text_layout.addWidget(text_label)
 
-    # ===================== SCORE DISPLAY =======================
-    if waifu_meter is not None:
-        score_label = tk.Label(
-            root,
-            text=str(waifu_meter),
-            bg=bg_color,
-            fg="#888888",
-            font=("Allerta", 12),
-            anchor="se",
-        )
-        score_label.place(relx=1.0, rely=1.0, x=-10, y=-10, anchor="se")
+	text_layout.addStretch()
 
-    # ===================== TYPEWRITER EFFECT ===================
-    typing_delay_ms = 20  # smaller = faster typing
+	# --- Waifu meter score ---
+	if waifu_meter is not None:
+		score_label = QLabel(str(waifu_meter))
+		score_label.setFont(score_font)
+		score_label.setStyleSheet(f"color: #888888; background-color: {bg_color};")
+		score_label.setAlignment(Qt.AlignRight | Qt.AlignBottom)
+		text_layout.addWidget(score_label)
 
-    def type_writer(index: int = 0):
-        nonlocal typing_job_id
-        # if the window is gone, don't schedule anything
-        if not root.winfo_exists():
-            return
-        if index <= len(message):
-            text_label.config(text=message[:index])
-            typing_job_id = root.after(typing_delay_ms, type_writer, index + 1)
+	body_layout.addWidget(text_container)
 
-    type_writer()
+	main_layout.addWidget(body, 1)
 
-    # make sure it doesn't close before the text is done typing
-    if duration_ms > 0:
-        total_typing_time = typing_delay_ms * len(message)
-        close_after = max(duration_ms, total_typing_time + 1000)
-        close_job_id = root.after(close_after, close)
+	# ===================== TYPEWRITER EFFECT =======================
+	typing_index = [0]
 
-    root.mainloop()
+	def type_writer():
+		if not window.isVisible():
+			typing_timer.stop()
+			return
+		if typing_index[0] <= len(message):
+			text_label.setText(message[:typing_index[0]])
+			typing_index[0] += 1
+		else:
+			typing_timer.stop()
+
+	typing_timer.timeout.connect(type_writer)
+	typing_timer.start()
+
+	# ===================== AUTO-CLOSE =============================
+	if duration_ms > 0:
+		typing_delay_ms = 20
+		total_typing_time = typing_delay_ms * len(message)
+		close_after = max(duration_ms, total_typing_time + 1000)
+		QTimer.singleShot(close_after, close)
+
+	# ===================== SHOW ===================================
+	window.show()
+	app.exec()
+
 
 if __name__ == "__main__":
-    show_waifu_popup(sys.argv[1], sys.argv[2], sys.argv[3])
+	show_waifu_popup(sys.argv[1], sys.argv[2], int(sys.argv[3]))
